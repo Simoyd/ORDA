@@ -30,10 +30,11 @@ namespace ORDA
 		Bus bus = null;
 
 		// states
-		public enum Command { OFF=0, RATE, ATT, EAC, DOCK };
+		public enum Command { OFF=0, RATE, ATT, EAC, DOCK, AWES };
 		public enum RateMode { IDLE=0, ZERO, ROLL, HOLD };
-		public enum AttMode { IDLE=0, REF, HOLD, VP, VN, NP, NN, RP, RN, RPP, RPN, RVP, RVN };
-		public enum PosMode { IDLE=0, ZERO, HOLD, VN, RN, RETREAT };
+        public enum AttMode { IDLE = 0, REF, HOLD, VP, VN, NP, NN, RP, RN, RPP, RPN, RVP, RVN, RCP, RCN, NODE };
+        public enum UpMode { IDLE = 0, NP, NN, RP, RN };
+        public enum PosMode { IDLE = 0, ZERO, HOLD, VN, RN, RETREAT };
 		public enum EACMode { IDLE=0, PULSE, RATE };
 		public enum DockMode { IDLE=0, ATTITUDE, AUTO };
 		public enum DockState { IDLE=0, ENTRY, ORIENT, APPROACH, DOCKED, DEPART, ABORT };
@@ -41,8 +42,9 @@ namespace ORDA
 
 		Command command = Command.OFF;
 		RateMode rateMode = RateMode.IDLE;
-		AttMode attMode = AttMode.IDLE;
-		EACMode eacMode = EACMode.IDLE;
+        AttMode attMode = AttMode.IDLE;
+        UpMode upMode = UpMode.IDLE;
+        EACMode eacMode = EACMode.IDLE;
 		PosMode posMode = PosMode.IDLE;
 		DockMode dockMode = DockMode.IDLE;
 		DockState dockState = DockState.IDLE;
@@ -112,6 +114,7 @@ namespace ORDA
 		public void getStates (out Command outCommand, 
 		                       out RateMode outRateMode, 
 		                       out AttMode outAttMode,
+                               out UpMode outUpMode,
 		                       out EACMode outEacMode,
 		                       out PosMode outPosMode,
 		                       out DockMode outDockMode)
@@ -119,6 +122,7 @@ namespace ORDA
 			outCommand = command;
 			outRateMode = rateMode;
 			outAttMode = attMode;
+            outUpMode = upMode;
 			outEacMode = eacMode;
 			outPosMode = posMode;
 			outDockMode = dockMode;
@@ -187,6 +191,7 @@ namespace ORDA
 
 			rateMode = RateMode.IDLE;
 			attMode = AttMode.IDLE;
+            upMode = UpMode.IDLE;
 			eacMode = EACMode.IDLE;
 			dockMode = DockMode.IDLE;
 			dockState = DockState.IDLE;
@@ -217,6 +222,11 @@ namespace ORDA
 			if(command != Command.ATT)
 				return;
 
+            if (attMode == AttMode.IDLE)
+            {
+                upMode = UpMode.IDLE;
+            }
+
 			if(attMode == m)
 				attMode = AttMode.IDLE;
 			else
@@ -224,7 +234,28 @@ namespace ORDA
 
 			if(attMode == AttMode.HOLD)
 				userAttHoldRequest = true;
+
+            if (((attMode == AttMode.HOLD) || (attMode == AttMode.REF)) && (upMode != UpMode.IDLE))
+            {
+                upMode = UpMode.IDLE;
+            }
 		}
+
+        public void requestUpMode(UpMode m)
+        {
+            if (command != Command.ATT)
+                return;
+
+            if (upMode == m)
+                upMode = UpMode.IDLE;
+            else
+                upMode = m;
+
+            if (((attMode == AttMode.HOLD) || (attMode == AttMode.REF)) && (upMode != UpMode.IDLE))
+            {
+                attMode = AttMode.IDLE;
+            }
+        }
 
 		public void requestEacMode (EACMode m)
 		{
@@ -239,7 +270,7 @@ namespace ORDA
 
 		public void requestPosMode (PosMode m)
 		{
-			if(command == Command.DOCK)
+			if(command == Command.DOCK || command == Command.AWES)
 				return;
 
 			if(posMode == m)
@@ -285,6 +316,7 @@ namespace ORDA
 			config.command = command;
 			config.rateMode = rateMode;
 			config.attMode = attMode;
+            config.upMode = upMode;
 			config.eacMode = eacMode;
 			config.posMode = posMode;
 			config.dockMode = dockMode;
@@ -310,6 +342,7 @@ namespace ORDA
 			command = config.command;
 			rateMode = config.rateMode;
 			attMode = config.attMode;
+            upMode = config.upMode;
 			eacMode = config.eacMode;
 			posMode = config.posMode;
 			dockMode = config.dockMode;
@@ -370,9 +403,13 @@ namespace ORDA
 			else if (command == Command.DOCK) {
 				dockLogic (dt);
 			}
+            else if (command == Command.AWES)
+            {
+                awesLogic();
+            }
 
 			// position modes
-			if (command != Command.DOCK) {
+			if (command != Command.DOCK && command != Command.AWES) {
 				positionLogic ();
 			}
 
@@ -386,8 +423,9 @@ namespace ORDA
 		private void checkStates ()
 		{
 			// docking override?
-			if (command == Command.DOCK) {
+			if (command == Command.DOCK || command == Command.AWES) {
 				attMode = AttMode.IDLE;
+                upMode = UpMode.IDLE;
 				rateMode = RateMode.IDLE;
 				posMode = PosMode.IDLE;
 			}
@@ -398,7 +436,8 @@ namespace ORDA
 				// disable invalid att hold modes
 				if (command == Command.ATT &&
 					(attMode == AttMode.RPP || attMode == AttMode.RPN ||
-					attMode == AttMode.RVP || attMode == AttMode.RVN)) {
+					attMode == AttMode.RVP || attMode == AttMode.RVN ||
+                    attMode == AttMode.RCP || attMode == AttMode.RCN)) {
 					requestAttMode (AttMode.IDLE);
 				}
 			}
@@ -462,56 +501,97 @@ namespace ORDA
 			// process hold request
 			if (userAttHoldRequest) {
 				userAttHoldRequest = false;
-				userAttSetting = flightData.vessel.transform.TransformDirection (new Vector3 (0, 1, 0));
-				userAttUpSetting = flightData.vessel.transform.TransformDirection (new Vector3 (0, 0, 1));
+                userAttSetting = flightData.vessel.GetTransform().TransformDirection(new Vector3(0, 1, 0));
+                userAttUpSetting = flightData.vessel.GetTransform().TransformDirection(new Vector3(0, 0, -1));
 			}
 
 			attActive = true;
-			switch (attMode) {
-			case AttMode.REF:
-				attUpActive = true;
-				attCommand = new Vector3 (1, 0, 0);
-				attUpCommand = new Vector3 (0, 1, 0);
-				break;
-			case AttMode.HOLD:
-				attUpActive = true;
-				attCommand = userAttSetting;
-				attUpCommand = userAttUpSetting;
-				break;
-			case AttMode.VP:
-				attCommand = flightData.orbitVelocity.normalized;
-				break;
-			case AttMode.VN:
-				attCommand = -flightData.orbitVelocity.normalized;
-				break;
-			case AttMode.NP:
-				attCommand = flightData.orbitNormal.normalized;
-				break;
-			case AttMode.NN:
-				attCommand = -flightData.orbitNormal.normalized;
-				break;
-			case AttMode.RP:
-				attCommand = flightData.orbitUp.normalized;
-				break;
-			case AttMode.RN:
-				attCommand = -flightData.orbitUp.normalized;
-				break;
-			case AttMode.RPP:
-				attCommand = flightData.targetRelPosition.normalized;
-				break;
-			case AttMode.RPN:
-				attCommand = -flightData.targetRelPosition.normalized;
-				break;
-			case AttMode.RVP:
-				attCommand = flightData.targetRelVelocity.normalized;
-				break;
-			case AttMode.RVN:
-				attCommand = -flightData.targetRelVelocity.normalized;
-				break;
-			default:
-				attActive = false;
-				break;
-			}
+            switch (attMode)
+            {
+                case AttMode.REF:
+                    attUpActive = true;
+                    attCommand = new Vector3(1, 0, 0);
+                    attUpCommand = new Vector3(0, 1, 0);
+                    break;
+                case AttMode.HOLD:
+                    attUpActive = true;
+                    attCommand = userAttSetting;
+                    attUpCommand = userAttUpSetting;
+                    break;
+                case AttMode.VP:
+                    attCommand = flightData.orbitVelocity.normalized;
+                    break;
+                case AttMode.VN:
+                    attCommand = -flightData.orbitVelocity.normalized;
+                    break;
+                case AttMode.NP:
+                    attCommand = flightData.orbitNormal.normalized;
+                    break;
+                case AttMode.NN:
+                    attCommand = -flightData.orbitNormal.normalized;
+                    break;
+                case AttMode.RP:
+                    attCommand = flightData.orbitUp.normalized;
+                    break;
+                case AttMode.RN:
+                    attCommand = -flightData.orbitUp.normalized;
+                    break;
+                case AttMode.RPP:
+                    attCommand = flightData.targetRelPosition.normalized;
+                    break;
+                case AttMode.RPN:
+                    attCommand = -flightData.targetRelPosition.normalized;
+                    break;
+                case AttMode.RVP:
+                    attCommand = flightData.targetRelVelocity.normalized;
+                    break;
+                case AttMode.RVN:
+                    attCommand = -flightData.targetRelVelocity.normalized;
+                    break;
+                case AttMode.RCP:
+                    attCommand = (flightData.targetRelPosition.normalized - flightData.targetRelVelocity.normalized).normalized;
+                    break;
+                case AttMode.RCN:
+                    attCommand = (-flightData.targetRelPosition.normalized - flightData.targetRelVelocity.normalized).normalized;
+                    break;
+                case AttMode.NODE:
+                    if (flightData.firstNodeBurnVector.HasValue)
+                    {
+                        attCommand = flightData.firstNodeBurnVector.Value;
+                    }
+                    else
+                    {
+                        attActive = false;
+                        requestAttMode(AttMode.IDLE);
+                    }
+                    break;
+                default:
+                    attActive = false;
+                    break;
+            }
+
+            if ((attMode != AttMode.HOLD) && (attMode != AttMode.REF))
+            {
+                switch(upMode)
+                {
+                    case UpMode.RP:
+                        attUpActive = true;
+                        attUpCommand = flightData.orbitUp.normalized;
+                        break;
+                    case UpMode.RN:
+                        attUpActive = true;
+                        attUpCommand = -flightData.orbitUp.normalized;
+                        break;
+                    case UpMode.NP:
+                        attUpActive = true;
+                        attUpCommand = flightData.orbitNormal.normalized;
+                        break;
+                    case UpMode.NN:
+                        attUpActive = true;
+                        attUpCommand = -flightData.orbitNormal.normalized;
+                        break;
+                }
+            }
 		}
 
 		private void eacLogic ()
@@ -600,6 +680,9 @@ namespace ORDA
 
 		private void dockLogic (float dt)
 		{
+            // [CW] Pretty sure this is all broken, so just return
+            return;
+
 			// maintain docking attitude
 			if(dockMode == DockMode.ATTITUDE) {
 
@@ -613,13 +696,14 @@ namespace ORDA
 					attActive = true;
 					attUpActive = true;
 					attCommand = -forward;
-					attUpCommand = up;
+					attUpCommand = -up;
 
 					// special case for docking ports facing the wrong direction
 					if ((flightData.vesselPart.transform.TransformDirection(new Vector3(0, 1, 0)) -
-					     flightData.vessel.transform.TransformDirection(new Vector3(0, 1, 0))).magnitude > 0.5f) {
+                         flightData.vessel.GetTransform().TransformDirection(new Vector3(0, 1, 0))).magnitude > 0.5f)
+                    {
 						attCommand = forward;
-						attUpCommand = -up;
+						attUpCommand = up;
 					}
 					if(dockInvertUp) attUpCommand *= -1;
 				}
@@ -682,13 +766,14 @@ namespace ORDA
 					attActive = true;
 					attUpActive = true;
 					attCommand = -forward;
-					attUpCommand = up;
+					attUpCommand = -up;
 
 					// special case for docking ports facing the wrong direction
 					if ((flightData.vesselPart.transform.TransformDirection(new Vector3(0, 1, 0)) -
-					     flightData.vessel.transform.TransformDirection(new Vector3(0, 1, 0))).magnitude > 0.5f) {
+                         flightData.vessel.GetTransform().TransformDirection(new Vector3(0, 1, 0))).magnitude > 0.5f)
+                    {
 						attCommand = forward;
-						attUpCommand = -up;
+						attUpCommand = up;
 					}
 					if(dockInvertUp) attUpCommand *= -1;
 
@@ -716,13 +801,14 @@ namespace ORDA
 					attActive = true;
 					attUpActive = true;
 					attCommand = -forward;
-					attUpCommand = up;
+					attUpCommand = -up;
 
 					// special case for docking ports facing the wrong direction
 					if ((flightData.vesselPart.transform.TransformDirection(new Vector3(0, 1, 0)) -
-					     flightData.vessel.transform.TransformDirection(new Vector3(0, 1, 0))).magnitude > 0.5f) {
+                         flightData.vessel.GetTransform().TransformDirection(new Vector3(0, 1, 0))).magnitude > 0.5f)
+                    {
 						attCommand = forward;
-						attUpCommand = -up;
+						attUpCommand = up;
 					}
 					if(dockInvertUp) attUpCommand *= -1;
 
@@ -796,25 +882,99 @@ namespace ORDA
 			}
 		}
 
-		private void controller ()
-		{
-			attError = Vector3.zero;
+        // [CW]TODO: Implement this
+        private void awesLogic()
+        {
+            float startAlt = 15000;
+            float endAlt = 70000;
+
+            //attActive = true;
+            //attUpActive = true;
+            //attCommand = ?vector;
+            //attUpCommand = ?vector;
+
+            Vector3 up = flightData.orbitUp.normalized;
+            Vector3 forward = Vector3.Cross(flightData.planetZUpAngularVelocity.normalized, flightData.orbitUp.normalized).normalized;
+
+            float percent = (flightData.altitudeASL - startAlt) / (endAlt - startAlt);
+
+            if (percent < 0)
+            {
+                percent = 0;
+                attActive = true;
+                attCommand = up;
+            }
+            else if (percent > 1)
+            {
+                percent = 1;
+                attActive = true;
+                attCommand = forward;
+                attUpActive = true;
+                attUpCommand = up;
+            }
+            else
+            {
+                float percentAngle = percent * (Mathf.PI / 3) + (Mathf.PI / 6);
+                Vector3 actualUp = up.normalized * Mathf.Cos(percentAngle);
+                Vector3 actualForward = forward.normalized * Mathf.Sin(percentAngle);
+
+                attActive = true;
+                attCommand = actualUp + actualForward;
+            }
+
+            //Vector3 woobleNormal = Vector3.Cross(flightData.vessel.GetTransform().up, flightData.totalThrustVector);
+            //float woobleAngle = Vector3.Angle(flightData.vessel.GetTransform().up, flightData.totalThrustVector);
+
+            //attCommand = Quaternion.AngleAxis(woobleAngle * flightData.woobleFactor, woobleNormal) * attCommand;
+        }
+
+        private int lastStart;
+        
+        private void controller()
+        {
+            //#region Timer Limiter
+
+            //bool go = false;
+
+            //int curTime = System.Environment.TickCount;
+
+            //if ((curTime - lastStart) > 1000)
+            //{
+            //    lastStart = curTime;
+            //}
+
+            //if ((curTime - lastStart) < 100)
+            //{
+            //    go = true;
+            //}
+
+            //if (!go)
+            //{
+            //    return;
+            //}
+
+            //#endregion
+
+            attError = Vector3.zero;
 			avelError = Vector3.zero;
 			rposError = Vector3.zero;
 			rvelError = Vector3.zero;
 
 			if (attActive) {
-				Vector3 error = flightData.vessel.transform.InverseTransformDirection (attCommand);
+                Vector3 error = flightData.vessel.GetTransform().InverseTransformDirection(attCommand);
 				attError = error;
+                flightData.attError = attCommand;
 
 				float p = Mathf.Atan2 (error.z, error.y);
 				float r = 0;
 				float y = -Mathf.Atan2 (error.x, error.y);
 
-				if (attUpActive) {
+				if (attUpActive)
+                {
 					if (Mathf.Abs (p) / Mathf.PI * 180 < 10 &&
-						Mathf.Abs (y) / Mathf.PI * 180 < 10) {
-						Vector3 up = flightData.vessel.transform.InverseTransformDirection (attUpCommand);
+						Mathf.Abs (y) / Mathf.PI * 180 < 10)
+                    {
+                        Vector3 up = flightData.vessel.GetTransform().InverseTransformDirection(-attUpCommand);
 						r = Mathf.Asin (up.x);
 					}
 				}
@@ -842,9 +1002,9 @@ namespace ORDA
 				float Ty = flightData.MoI.z * aaccCommand.z;
 
 				bus.yprDriven = true;
-				bus.pitch = Mathf.Clamp (Tp / flightData.availableTorque.x, -1.0f, +1.0f);
-				bus.roll = Mathf.Clamp (Tr / flightData.availableTorque.y, -1.0f, +1.0f);
-				bus.yaw = Mathf.Clamp (Ty / flightData.availableTorque.z, -1.0f, +1.0f);
+                bus.pitch = Mathf.Clamp(Tp / flightData.availableTorque.x, -1.0f, 1.0f);
+                bus.roll = Mathf.Clamp(Tr / flightData.availableTorque.y, -1.0f, 1.0f);
+                bus.yaw = Mathf.Clamp(Ty / flightData.availableTorque.z, -1.0f, 1.0f);
 			}
 
 			if (rposActive) {
@@ -857,7 +1017,7 @@ namespace ORDA
 				}
 				rposError = error;
 
-				Vector3 shipFrameError = flightData.vessel.transform.InverseTransformDirection(error);
+                Vector3 shipFrameError = flightData.vessel.GetTransform().InverseTransformDirection(error);
 				float dx = shipFrameError.x;
 				float dy = shipFrameError.y;
 				float dz = shipFrameError.z;
@@ -906,8 +1066,9 @@ namespace ORDA
 	{
 		public GNC.Command command;
 		public GNC.RateMode rateMode;
-		public GNC.AttMode attMode;
-		public GNC.EACMode eacMode;
+        public GNC.AttMode attMode;
+        public GNC.UpMode upMode;
+        public GNC.EACMode eacMode;
 		public GNC.PosMode posMode;
 		public GNC.DockMode dockMode;
 		public GNC.DockState dockState;

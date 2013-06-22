@@ -393,7 +393,7 @@ namespace ORDA
 
 				// maintain relative position while warping
 				if(dockState == DockState.DOCKED && dockedVessel != null) {
-					vessel.SetPosition (dockedVessel.transform.position + dockedDir * dockedDist);
+                    vessel.SetPosition(dockedVessel.GetTransform().position + dockedDir * dockedDist);
 				}
 
 				// done
@@ -438,7 +438,7 @@ namespace ORDA
 				// restore position
 				ignorePackUnpack = true;
 				vessel.GoOnRails ();
-				vessel.SetPosition (dockedVessel.transform.position + dockedDir * dockedDist);
+                vessel.SetPosition(dockedVessel.GetTransform().position + dockedDir * dockedDist);
 				vessel.GoOffRails ();
 				ignorePackUnpack = false;
 
@@ -692,9 +692,9 @@ namespace ORDA
 				// just to be on the safe side
 				if(FlightGlobals.ActiveVessel != null) {
 					// only when active vessel is nearby to reduce errors
-					float viewerDist = (FlightGlobals.ActiveVessel.transform.position - transform.position).magnitude;
+                    float viewerDist = (FlightGlobals.ActiveVessel.GetTransform().position - transform.position).magnitude;
 					if(viewerDist < 100) {
-						Vector3 relPos = vessel.transform.position - dockedPart.vessel.transform.position;
+                        Vector3 relPos = vessel.GetTransform().position - dockedPart.vessel.transform.position;
 						Vector3 dir = relPos.normalized;
 						float dist = relPos.magnitude;
 
@@ -797,9 +797,19 @@ namespace ORDA
 
 		static public bool isDockable (Part p)
 		{
-			if (p is ORDA_target || p is ORDA_decoupler) {
+            if (p is ORDA_target || p is ORDA_decoupler)
+            {
 				return true;
 			}
+
+            foreach (PartModule m in p.Modules)
+            {
+                if (m is ModuleDockingNode)
+                {
+                    return true;
+                }
+            }
+
 			return false;
 		}
 	}

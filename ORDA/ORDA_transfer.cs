@@ -245,7 +245,7 @@ namespace ORDA
 					if (activeVessel.isEVA) {
 
 						// in range?
-						float distance = (this.transform.position - activeVessel.transform.position).magnitude;
+                        float distance = (this.transform.position - activeVessel.GetTransform().position).magnitude;
 						if (distance < Mathf.Abs (maxGrappleDistance)) {
 
 							// kerbal not yet grappled?
@@ -296,7 +296,7 @@ namespace ORDA
 							// at own vessel?
 							if (closestVessel == this.vessel) {
 
-								Vector3 relPos = activeVessel.transform.position - this.transform.position;
+                                Vector3 relPos = activeVessel.GetTransform().position - this.transform.position;
 								float distance = relPos.magnitude;
 
 								// in range?
@@ -318,7 +318,7 @@ namespace ORDA
 
 								foreach (Part p in closestVessel.parts) {
 									if (p is FuelTank || p is RCSFuelTank) {
-										Vector3 relPos = activeVessel.transform.position - p.transform.position;
+                                        Vector3 relPos = activeVessel.GetTransform().position - p.transform.position;
 										float distance = relPos.magnitude;
 
 										if (closestTank == null || distance < closestTankDistance) {
@@ -359,7 +359,7 @@ namespace ORDA
 					if (activeVessel.isEVA) {
 
 						// in range?
-						float distance = (connectedTank.transform.position - activeVessel.transform.position).magnitude;
+                        float distance = (connectedTank.transform.position - activeVessel.GetTransform().position).magnitude;
 						if (distance < Mathf.Abs (maxGrappleDistance)) {
 
 							// kerbal not yet grappled?
@@ -385,13 +385,13 @@ namespace ORDA
 			// render logic
 			if (lineState == LineState.GRAPPLED) {
 				// render fuel line
-				Vector3 relPos = grappledKerbal.transform.position - this.transform.position;
+                Vector3 relPos = grappledKerbal.GetTransform().position - this.transform.position;
 				Vector3 ps = transform.InverseTransformDirection (relPos);
 				fuelLineRenderer.SetPosition (1, ps);
 
 			} else if (lineState == LineState.CONNECTED) {
 				// render fuel line
-				Vector3 relPos = connectedTank.transform.position - this.transform.position;
+                Vector3 relPos = connectedTank.transform.position - this.transform.position;
 				Vector3 ps = transform.InverseTransformDirection (relPos);
 				fuelLineRenderer.SetPosition (1, ps);
 
@@ -460,6 +460,7 @@ namespace ORDA
 		// utils
 		private float getPartFuelCapacity (Part part)
 		{
+            /*
 			foreach (AvailablePart ap in PartLoader.fetch.loadedPartsList) {
 	            if (ap.name == part.partInfo.name) {
 					Part p = ap.partPrefab;
@@ -471,6 +472,7 @@ namespace ORDA
 					}
 	            }
 	        }
+             */
 			return 0;
 		}
 	}

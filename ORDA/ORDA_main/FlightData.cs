@@ -9,6 +9,7 @@ namespace ORDA
 	{
 		// our vessel & target (all set by caller)
 		public Vessel vessel = null;
+        public float woobleFactor = 0;
 		public Vessel targetVessel = null;
 		public Part vesselPart = null;
 		public Part targetPart = null;
@@ -19,14 +20,17 @@ namespace ORDA
 		public Vector3 orbitUp = Vector3.zero;				// inertial frame
 		public Vector3 orbitVelocity = Vector3.zero;		// inertial frame
 		public Vector3 orbitNormal = Vector3.zero;			// inertial frame
+        public Vector3 planetZUpAngularVelocity = Vector3.zero;
 		public Vector3 targetRelPosition = Vector3.zero;	// inertial frame
 		public Vector3 targetRelVelocity = Vector3.zero;	// inertial frame
 		public Vector3 targetRelPositionShip = Vector3.zero;// ship frame
 		public Vector3 targetRelVelocityShip = Vector3.zero;// ship frame
+        public Vector3? firstNodeBurnVector = null;
 		public float altitudeASL = 0;
 		public float altitudeAGL = 0;
 		public float verticalSpeed = 0;
 		public float horizontalSpeed = 0;
+        public string debugValue = string.Empty;
 
 		// vehicle dynamics
 		public float mass = 0;
@@ -36,6 +40,8 @@ namespace ORDA
 		public Vector3 availableForce = Vector3.zero;
 		public Vector3 availableAngAcc = Vector3.zero;
 		public Vector3 availableLinAcc = Vector3.zero;
+        public Vector3 totalThrustVector = Vector3.zero;
+        public Vector3 attError = Vector3.zero;
 		public float availableEngineThrust = 0;
 		public float availableEngineThrustUp = 0;
 		public float availableEngineAcc = 0;
@@ -51,15 +57,16 @@ namespace ORDA
 			CoM = vessel.findWorldCenterOfMass ();
 
 			// get vehicle state
-			angularVelocity = vessel.transform.InverseTransformDirection (vessel.rigidbody.angularVelocity);
+			angularVelocity = vessel.GetTransform().InverseTransformDirection (vessel.rigidbody.angularVelocity);
 			orbitUp = Util.reorder (vessel.orbit.pos, 132).normalized;
 			orbitVelocity = Util.reorder (vessel.orbit.vel, 132).normalized;
 			orbitNormal = -Vector3.Cross (orbitUp, orbitVelocity).normalized;
+            planetZUpAngularVelocity = Util.reorder(vessel.mainBody.zUpAngularVelocity, 132);
 			if (targetVessel != null) {
 				targetRelPosition = Util.reorder (targetVessel.orbit.pos - vessel.orbit.pos, 132);
-				targetRelVelocity = Util.reorder (targetVessel.orbit.vel - vessel.orbit.vel, 132);
-				targetRelPositionShip = vessel.transform.InverseTransformDirection (targetRelPosition);
-				targetRelVelocityShip = vessel.transform.InverseTransformDirection (targetRelVelocity);
+                targetRelVelocity = Util.reorder (vessel.orbit.vel - targetVessel.orbit.vel, 132);
+                targetRelPositionShip = vessel.GetTransform().InverseTransformDirection(targetRelPosition);
+                targetRelVelocityShip = vessel.GetTransform().InverseTransformDirection(targetRelVelocity);
 			} else {
 				targetRelPosition = Vector3.zero;
 				targetRelVelocity = Vector3.zero;
@@ -68,13 +75,46 @@ namespace ORDA
 			}
 			altitudeASL = (float)vessel.altitude;
 			altitudeAGL = (float)(vessel.altitude - vessel.terrainAltitude);
+
+            if (vessel.patchedConicSolver.maneuverNodes.Count > 0)
+            {
+                firstNodeBurnVector = vessel.patchedConicSolver.maneuverNodes[0].GetBurnVector(vessel.orbit);
+            }
+            else
+            {
+                firstNodeBurnVector = null;
+            }
+
+            totalThrustVector = Vector3.zero;
+            float numParts = 0;
+
 			foreach (Part p in vessel.parts) {
 				if (p.collider != null) {
 					Vector3d bottomPoint = p.collider.ClosestPointOnBounds (vessel.mainBody.position);
 					float partBottomAlt = (float)(vessel.mainBody.GetAltitude (bottomPoint) - vessel.terrainAltitude);
 					altitudeAGL = Mathf.Max (0, Mathf.Min (altitudeAGL, partBottomAlt));
 				}
+
+                if (p.State == PartStates.ACTIVE)
+                {
+                    if (p is LiquidFuelEngine)
+                    {
+                        ++numParts;
+                        LiquidFuelEngine lfe = (LiquidFuelEngine)p;
+                        totalThrustVector = totalThrustVector + lfe.transform.TransformDirection(lfe.thrustVector * lfe.maxThrust);
+                    }
+
+                    if (p is SolidRocket)
+                    {
+                        ++numParts;
+                        SolidRocket sr = (SolidRocket)p;
+                        totalThrustVector = totalThrustVector + sr.transform.TransformDirection(sr.thrustVector * sr.thrust);
+                    }
+                }
 			}
+
+            //debugValue = numParts.ToString();
+
 			Vector3 up = (CoM - vessel.mainBody.position).normalized;
 			Vector3 velocityVesselSurface = vessel.orbit.GetVel () - vessel.mainBody.getRFrmVel (CoM);
 			verticalSpeed = Vector3.Dot (velocityVesselSurface, up);
@@ -119,7 +159,7 @@ namespace ORDA
 						Vector3 tv = rm.thrustVectors [i];
 						if (tv != Vector3.zero) {
 							Vector3 tv_world = rm.transform.TransformDirection (rm.thrustVectors [i]).normalized;
-							Vector3 tv_ship = vessel.transform.InverseTransformDirection (tv_world).normalized;
+                            Vector3 tv_ship = vessel.GetTransform().InverseTransformDirection(tv_world).normalized;
 							Vector3 tp_world = rm.transform.position - CoM;
 							float thrust = rm.thrusterPowers [i];
 
@@ -157,7 +197,7 @@ namespace ORDA
 				// liquid fuel engine
 				if (p is LiquidFuelEngine && p.State == PartStates.ACTIVE) {
 					LiquidFuelEngine lfe = (LiquidFuelEngine)p;
-					Vector3 tv = vessel.transform.TransformDirection(lfe.thrustVector);
+                    Vector3 tv = vessel.GetTransform().TransformDirection(lfe.thrustVector);
 					float dot = Vector3.Dot(up.normalized, tv.normalized);
 
 					availableEngineThrust += lfe.maxThrust;

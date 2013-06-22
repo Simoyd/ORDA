@@ -34,6 +34,7 @@ namespace ORDA
 		float decoupleSafetyTimer = 0;
 		bool decoupledFlag = false;
 		bool springFlag = false;
+        bool dieFlag = false;
 
 		bool doNotActivate = true;
 
@@ -82,7 +83,7 @@ namespace ORDA
 				if(GUILayout.Button ("show")) {
 					// reset old highlight
 					if(highlightedDecoupler != null) {
-						highlightedDecoupler.highlight(ColorHighlightNone);
+                        highlightedDecoupler.SetHighlight(false);
 						highlightedDecoupler = null;
 					}
 
@@ -90,7 +91,7 @@ namespace ORDA
 					//	dcpl2.highlight(ColorHighlightNone);
 					//}
 					// highlight this decoupler
-					dcpl.highlight(Color.green);
+                    dcpl.SetHighlight(true);
 					highlightedDecoupler = dcpl;
 					highlightTimer = 0;
 				}
@@ -204,7 +205,7 @@ namespace ORDA
 			if(highlightedDecoupler != null) {
 				highlightTimer += dt;
 				if(highlightTimer > highlightDelay) {
-					highlightedDecoupler.highlight(ColorHighlightNone);
+                    highlightedDecoupler.SetHighlight(false);
 					highlightedDecoupler = null;
 					highlightTimer = 0;
 				}
@@ -225,7 +226,7 @@ namespace ORDA
 
 			// skip?
 			if(FlightGlobals.ActiveVessel != vessel) return;
-			if(decoupledFlag) return;
+            if (decoupledFlag) return;
 
 			// seems to get ignored sometimes in onPartFixedUpdate()
 			if (Input.GetKeyDown (decouplerKey)) {
@@ -237,10 +238,18 @@ namespace ORDA
 		{
 			base.onPartFixedUpdate ();
 
+            if (dieFlag)
+            {
+                dieFlag = false;
+                this.Die();
+            }
+
 			// apply spring simple force? (todo: apply force to both parts)
 			if (springFlag) {
 				springFlag = false;
 				rigidbody.AddRelativeForce (new Vector3 (0, -springForce, 0));
+
+                dieFlag = true;
 			}
 
 			// skip?
@@ -266,7 +275,7 @@ namespace ORDA
 					decoupledFlag = true;
 					doNotActivate = false;
 					this.force_activate();
-					this.highlight(ColorHighlightNone);
+                    this.SetHighlight(false);
 
 					/* todo: remove all strut connectors from 
 					 * the list that should stay on our vessel,
@@ -283,7 +292,7 @@ namespace ORDA
 
 				} else {
 					decoupleSafety = true;
-					this.highlight (Color.green);
+                    this.SetHighlight(true);
 				}
 			}
 
@@ -293,7 +302,7 @@ namespace ORDA
 				if(decoupleSafetyTimer > safetyTimerDelay) {
 					decoupleSafetyTimer = 0;
 					decoupleSafety = false;
-					this.highlight(ColorHighlightNone);
+                    this.SetHighlight(false);
 				}
 			}
 		}

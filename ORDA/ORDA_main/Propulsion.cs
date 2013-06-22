@@ -29,7 +29,7 @@ namespace ORDA
 					//flightData.vessel.rigidbody.AddRelativeTorque (-torque);
 
 					// distribute torque amongst all parts to reduce jitter when docked
-					Vector3 inertialTorque = flightData.vessel.transform.TransformDirection(-torque);
+                    Vector3 inertialTorque = flightData.vessel.GetTransform().TransformDirection(-torque);
 					float frac = 1.0f / flightData.vessel.parts.Count;
 					foreach(Part p in flightData.vessel.parts) {
 						p.Rigidbody.AddTorque(inertialTorque * frac);

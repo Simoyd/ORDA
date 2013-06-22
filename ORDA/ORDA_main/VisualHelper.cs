@@ -7,7 +7,7 @@ namespace ORDA
 {
 	public class VisualHelper
 	{
-		const int numLines = 5;
+		const int numLines = 7;
 		LineRenderer[] lines = new LineRenderer[numLines];
 		Vessel vessel = null;
 
@@ -21,12 +21,31 @@ namespace ORDA
 		{
 			// not sure why they would become null, but they do sometimes when things go kerbal :/
 			for (int i=0; i<numLines; i++) {
-				if(lines[i] != null) continue;
-				GameObject obj = new GameObject ("Line");
 
-				lines [i] = obj.AddComponent< LineRenderer > ();
-				lines [i].transform.parent = vessel.transform;
-				lines [i].transform.localPosition = Vector3.zero;
+                bool createdLine = false;
+
+                if (lines[i] == null)
+                {
+                    GameObject obj = new GameObject("Line");
+                    lines[i] = obj.AddComponent<LineRenderer>();
+                    createdLine = true;
+                }
+                else if (lines[i].transform.parent != vessel.GetTransform())
+                {
+                    lines[i].enabled = false;
+
+                    GameObject obj = new GameObject("Line");
+                    lines[i] = obj.AddComponent<LineRenderer>();
+                    createdLine = true;
+                }
+
+                if (!createdLine)
+                {
+                    continue;
+                }
+
+                lines[i].transform.parent = vessel.GetTransform();
+                lines[i].transform.localPosition = Vector3.zero;
 				lines [i].transform.localEulerAngles = Vector3.zero;
 				lines [i].useWorldSpace = false;
 
@@ -36,26 +55,33 @@ namespace ORDA
 				lines [i].SetPosition (0, Vector3.zero);
 				lines [i].SetPosition (1, Vector3.zero);
 
-				switch (i) {
-				case 0:
-					lines [i].SetColors (Color.red, Color.red);
-					break;
-				case 1:
-					lines [i].SetColors (Color.green, Color.green);
-					break;
-				case 2:
-					lines [i].SetColors (Color.blue, Color.blue);
-					break;
-				case 3:
-					lines [i].SetColors (Color.gray, Color.gray);
-					break;
-				case 4:
-					lines [i].SetColors (Color.white, Color.white);
-					break;
-				default:
-					lines [i].SetColors (Color.white, Color.white);
-					break;
-				}
+                switch (i)
+                {
+                    case 0:
+                        lines[i].SetColors(Color.red, Color.red);
+                        break;
+                    case 1:
+                        lines[i].SetColors(Color.green, Color.green);
+                        break;
+                    case 2:
+                        lines[i].SetColors(Color.blue, Color.blue);
+                        break;
+                    case 3:
+                        lines[i].SetColors(Color.gray, Color.gray);
+                        break;
+                    case 4:
+                        lines[i].SetColors(Color.white, Color.white);
+                        break;
+                    case 5:
+                        lines[i].SetColors(Color.cyan, Color.cyan);
+                        break;
+                    case 6:
+                        lines[i].SetColors(Color.cyan, Color.magenta);
+                        break;
+                    default:
+                        lines[i].SetColors(Color.white, Color.white);
+                        break;
+                }
 			}
 		}
 
@@ -72,7 +98,7 @@ namespace ORDA
 			if(vessel == null) return;
 			checkLines();
 
-			Vector3 ps = vessel.transform.InverseTransformDirection (pi);
+			Vector3 ps = vessel.GetTransform().InverseTransformDirection (pi);
 			lines [line].SetPosition (1, ps);
 		}
 

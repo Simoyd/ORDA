@@ -43,7 +43,7 @@ namespace ORDA
 		}
 	}
 
-	public class Util
+	static public class Util
 	{
 		//
 		// sort vessels by distance to own vessel
